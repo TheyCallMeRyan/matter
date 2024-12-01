@@ -137,6 +137,16 @@ local function mutableMerge(base, extension)
 	return base
 end
 
+local changedMutableComponents = {}
+
+local function getChangedMutableComponents()
+	return changedMutableComponents
+end
+
+local function resetChangedMutableComponents()
+	table.clear(changedMutableComponents)
+end
+
 --[=[
 	@class MutableComponent
 
@@ -171,9 +181,7 @@ local function newMutableComponent(name, defaultData)
 		"if component default data is specified, it must be a table"
 	)
 
-	local component = {
-		_isMutable = true,
-	}
+	local component = {}
 
 	component.__index = function(self, index)
 		local result = self._componentData[index]
@@ -185,8 +193,7 @@ local function newMutableComponent(name, defaultData)
 	end
 
 	component.__newindex = function(self, index, value)
-		local changedMutables = self._world._changedMutables
-		changedMutables[self] = changedMutables[self] or table.clone(self._componentData)
+		changedMutableComponents[self] = changedMutableComponents[self] or table.clone(self._componentData)
 
 		self._componentData[index] = value
 	end
@@ -199,10 +206,7 @@ local function newMutableComponent(name, defaultData)
 		end
 
 		local result = {
-			_component = component,
 			_componentData = data,
-			_entityIds = {},
-			_world = None, --So that __newindex never fires for _world
 		}
 
 		return setmetatable(result, component)
@@ -302,6 +306,8 @@ end
 return {
 	newComponent = newComponent,
 	newMutableComponent = newMutableComponent,
+	getChangedMutableComponents = getChangedMutableComponents,
+	resetChangedMutableComponents = resetChangedMutableComponents,
 	assertValidComponentInstance = assertValidComponentInstance,
 	assertValidComponentInstances = assertValidComponentInstances,
 	assertComponentArgsProvided = assertComponentArgsProvided,
