@@ -128,9 +128,6 @@ function World.new()
 
 		-- Storage for `queryChanged`
 		_changedStorage = {},
-		
-		-- Storage to track changing mutable tables
-		_changedMutableComponents = {},
 
 		-- Storage to track components to id
 		_componentToId = {}
