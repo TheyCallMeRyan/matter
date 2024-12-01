@@ -55,7 +55,7 @@
 local immutable = require(script.immutable)
 local World = require(script.World)
 local Loop = require(script.Loop)
-local newComponent = require(script.component).newComponent
+local component = require(script.component)
 local topoRuntime = require(script.topoRuntime)
 
 export type World = World.World
@@ -65,7 +65,8 @@ return table.freeze({
 	World = World,
 	Loop = Loop,
 
-	component = newComponent,
+	component = component.newComponent,
+	mutableComponent = component.newMutableComponent,
 
 	useEvent = require(script.hooks.useEvent),
 	useDeltaTime = require(script.hooks.useDeltaTime),

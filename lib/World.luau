@@ -128,6 +128,9 @@ function World.new()
 
 		-- Storage for `queryChanged`
 		_changedStorage = {},
+		
+		-- Storage to track changing mutable tables
+		_changedMutables = {},
 	}, World)
 
 	self.rootArchetype = ensureArchetype(self, {})
@@ -423,7 +426,25 @@ function World:commitCommands()
 	end
 
 	table.clear(self.commands)
+	
+	self:_commitMutableComponents()
 end
+
+--[=[
+	Processes any MutableComponents that have changed since the last call
+
+	This is called automatically with commitChanges
+]=]
+function World:_commitMutableComponents()
+	for mutableComponentInstance, old in self._changedMutables do
+		for id in mutableComponentInstance._entityIds do
+			local component = self.componentIdToComponent[#mutableComponentInstance]
+			-- New is always the mutableComponentInstance because it always stays up-to-date
+			self:_trackChanged(component, id, old, mutableComponentInstance)
+		end
+	end
+end
+
 
 --[=[
 	Stops deferring entity commands and processes all commands left in the buffer.
@@ -1234,6 +1255,16 @@ function World:queryChanged(componentToTrack, ...: nil)
 end
 
 function World._trackChanged(self: World, metatable, id, old, new)
+	if old and old._isMutable then
+		old._entityIds[id] = nil
+	end
+	
+	if new and new._isMutable then
+		new._entityIds[id] = true
+		assert(not new._world or new._world == self, "Cannot associate a MutableComponentInstance with multiple worlds.")
+		new._world = self
+	end
+
 	if not self._changedStorage[metatable] then
 		return
 	end

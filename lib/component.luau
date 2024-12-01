@@ -1,4 +1,6 @@
-local merge = require(script.Parent.immutable).merge
+local immutable = require(script.Parent.immutable)
+local merge = immutable.merge
+local None = immutable.None
 
 --[=[
 	@class Component
@@ -123,6 +125,124 @@ local function newComponent(name, defaultData)
 	return component
 end
 
+local function mutableMerge(base, extension)
+	for key, value in extension do
+		if value == None then
+			base[key] = nil
+		else
+			base[key] = value
+		end
+	end
+
+	return base
+end
+
+--[=[
+	@class MutableComponent
+
+	A `MutableComponent` performs similar to a Component, but allows its Instances to be mutated.
+]=]
+
+--[=[
+	@within MutableComponent
+	@type MutableComponentInstance {}
+
+	The `MutableComponentInstance` is the same as a ComponentInstance, but does not require immutability.
+
+	This allows for modifications such as the following:
+
+	```lua
+	-- Mutable Component:
+	local MyComponent = Matter.mutableComponent("My component")
+
+	-- component instance:
+	local myComponentInstance = MyComponent({
+		some = "data"
+	})
+
+	print(getmetatable(myComponentInstance) == MyComponent) --> true
+	```
+]=]
+local function newMutableComponent(name, defaultData)
+	name = name or debug.info(2, "s") .. "@" .. debug.info(2, "l")
+
+	assert(
+		defaultData == nil or type(defaultData) == "table",
+		"if component default data is specified, it must be a table"
+	)
+
+	local component = {
+		_isMutable = true,
+	}
+
+	component.__index = function(self, index)
+		local result = self._componentData[index]
+		if result then
+			return result
+		else -- To allow ComponentInstance.new() / access to the metatable
+			return component[index]
+		end
+	end
+
+	component.__newindex = function(self, index, value)
+		local changedMutables = self._world._changedMutables
+		changedMutables[self] = changedMutables[self] or table.clone(self._componentData)
+
+		self._componentData[index] = value
+	end
+
+	function component.new(data)
+		data = data or {}
+
+		if defaultData then
+			data = merge(defaultData, data)
+		end
+
+		local result = {
+			_component = component,
+			_componentData = data,
+			_entityIds = {},
+			_world = None, --So that __newindex never fires for _world
+		}
+
+		return setmetatable(result, component)
+	end
+
+	--[=[
+	@within MutableComponent
+	
+	Performs the same as Component:patch() except that it always returns the same MutableComponent
+
+	@param partialNewData {} -- The table to be merged with the existing component data.
+	@return MutableComponentInstance -- A copy of the component instance with values from `partialNewData` overriding existing values.
+	]=]
+	function component:patch(partialNewData)
+		debug.profilebegin("patch")
+		mutableMerge(self._componentData, partialNewData)
+		debug.profileend()
+		return self
+	end
+
+	lastId += 1
+	local id = lastId
+
+	component.id = id
+	setmetatable(component, {
+		__call = function(_, ...)
+			return component.new(...)
+		end,
+		__tostring = function()
+			return name
+		end,
+		__len = function()
+			return id
+		end,
+		[DIAGNOSTIC_COMPONENT_MARKER] = true,
+	})
+
+	return component
+end
+
 local function assertValidType(value, position)
 	if typeof(value) ~= "table" then
 		error(string.format("Component #%d is invalid: not a table", position), 3)
@@ -181,6 +301,7 @@ end
 
 return {
 	newComponent = newComponent,
+	newMutableComponent = newMutableComponent,
 	assertValidComponentInstance = assertValidComponentInstance,
 	assertValidComponentInstances = assertValidComponentInstances,
 	assertComponentArgsProvided = assertComponentArgsProvided,
