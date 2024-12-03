@@ -192,7 +192,9 @@ local function newMutableComponent(name, defaultData)
 	component.__index = function(self, index)
 		local result = self._componentData[index]
 		if result then
-			potentiallyChangedMutables[self] = true
+			if typeof(result) == "table" then
+				potentiallyChangedMutables[self] = true
+			end
 			return result
 		else -- To allow ComponentInstance.new() / access to the metatable
 			return component[index]
