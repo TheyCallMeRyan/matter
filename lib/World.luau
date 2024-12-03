@@ -436,14 +436,13 @@ end
 	This is called automatically with commitChanges
 ]=]
 function World:_commitMutableComponents()
-	for mutableComponentInstance, old in Component.getChangedMutableComponents() do
+	for mutableComponentInstance, old in Component.iterChangedMutableComponents() do
 		for id in mutableComponentInstance._entityIds do
 			local component = self.componentIdToComponent[#mutableComponentInstance]
 			-- New is always the mutableComponentInstance because it always stays up-to-date
 			self:_trackChanged(component, id, old, mutableComponentInstance)
 		end
 	end
-	Component.resetChangedMutableComponents()
 end
 
 

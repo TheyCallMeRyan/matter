@@ -1,6 +1,9 @@
-local immutable = require(script.Parent.immutable)
-local merge = immutable.merge
-local None = immutable.None
+local immutableMerge = require(script.Parent.immutable).merge
+
+local mutable = require(script.Parent.mutable)
+local mutableMerge = mutable.merge
+local equalsDeep = mutable.equalsDeep
+local copyDeep = mutable.copyDeep
 
 --[=[
 	@class Component
@@ -63,7 +66,7 @@ local function newComponent(name, defaultData)
 		data = data or {}
 
 		if defaultData then
-			data = merge(defaultData, data)
+			data = immutableMerge(defaultData, data)
 		end
 
 		return table.freeze(setmetatable(data, component))
@@ -100,7 +103,7 @@ local function newComponent(name, defaultData)
 	]=]
 	function component:patch(partialNewData)
 		debug.profilebegin("patch")
-		local patch = getmetatable(self).new(merge(self, partialNewData))
+		local patch = getmetatable(self).new(immutableMerge(self, partialNewData))
 		debug.profileend()
 		return patch
 	end
@@ -125,26 +128,29 @@ local function newComponent(name, defaultData)
 	return component
 end
 
-local function mutableMerge(base, extension)
-	for key, value in extension do
-		if value == None then
-			base[key] = nil
-		else
-			base[key] = value
-		end
-	end
-
-	return base
-end
-
+-- Set of newIndex mutables
 local changedMutableComponents = {}
 
-local function getChangedMutableComponents()
-	return changedMutableComponents
-end
+-- Set of indexed mutables
+local potentiallyChangedMutables = {}
 
-local function resetChangedMutableComponents()
-	table.clear(changedMutableComponents)
+local function iterChangedMutableComponents()
+	return coroutine.wrap(function()
+		for mutable in changedMutableComponents do
+			potentiallyChangedMutables[mutable] = nil
+			coroutine.yield(mutable, mutable._lastComponentData)
+			mutable._lastComponentData = copyDeep(mutable._componentData)
+		end
+		table.clear(changedMutableComponents)
+
+		for mutable in potentiallyChangedMutables do
+			if not equalsDeep(mutable._componentData, mutable._lastComponentData) then
+				coroutine.yield(mutable, mutable._lastComponentData)
+				mutable._lastComponentData = copyDeep(mutable._componentData)
+			end
+		end
+		table.clear(potentiallyChangedMutables)
+	end)
 end
 
 --[=[
@@ -186,6 +192,7 @@ local function newMutableComponent(name, defaultData)
 	component.__index = function(self, index)
 		local result = self._componentData[index]
 		if result then
+			potentiallyChangedMutables[self] = true
 			return result
 		else -- To allow ComponentInstance.new() / access to the metatable
 			return component[index]
@@ -193,7 +200,7 @@ local function newMutableComponent(name, defaultData)
 	end
 
 	component.__newindex = function(self, index, value)
-		changedMutableComponents[self] = changedMutableComponents[self] or table.clone(self._componentData)
+		changedMutableComponents[self] = true
 
 		self._componentData[index] = value
 	end
@@ -202,11 +209,12 @@ local function newMutableComponent(name, defaultData)
 		data = data or {}
 
 		if defaultData then
-			data = merge(defaultData, data)
+			data = mutableMerge(defaultData, data)
 		end
 
 		local result = {
 			_componentData = data,
+			_lastComponentData = copyDeep(data),
 		}
 
 		return setmetatable(result, component)
@@ -306,8 +314,7 @@ end
 return {
 	newComponent = newComponent,
 	newMutableComponent = newMutableComponent,
-	getChangedMutableComponents = getChangedMutableComponents,
-	resetChangedMutableComponents = resetChangedMutableComponents,
+	iterChangedMutableComponents = iterChangedMutableComponents,
 	assertValidComponentInstance = assertValidComponentInstance,
 	assertValidComponentInstances = assertValidComponentInstances,
 	assertComponentArgsProvided = assertComponentArgsProvided,
