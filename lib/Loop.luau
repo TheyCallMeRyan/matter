@@ -236,8 +236,6 @@ local function orderSystemsByDependencies(unscheduledSystems: { System })
 		local priority = systemPriorityMap[system]
 
 		if not priority then
-			priority = 0
-
 			systemPriorityMap[system] = visiting
 
 			if type(system) == "table" then
@@ -246,7 +244,8 @@ local function orderSystemsByDependencies(unscheduledSystems: { System })
 						local dependencyName = systemNames[dependency]
 
 						if systemPriorityMap[dependency] ~= visiting then
-							priority = math.max(priority, systemPriority(dependency) + 1)
+							local dependencyPriority = systemPriority(dependency) + 1
+							priority = if priority then math.max(priority, dependencyPriority) else dependencyPriority
 						else
 							local errorStatement = {
 								`Cyclic dependency detected: System '{name}' is set to execute after System '{dependencyName}', and vice versa. This creates a loop that prevents the systems from being able to execute in a valid order.`,
@@ -258,6 +257,10 @@ local function orderSystemsByDependencies(unscheduledSystems: { System })
 				elseif system.priority then
 					priority = system.priority
 				end
+			end
+			
+			if not priority then
+				priority = 0
 			end
 
 			systemPriorityMap[system] = priority
