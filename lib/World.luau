@@ -128,6 +128,9 @@ function World.new()
 
 		-- Storage for `queryChanged`
 		_changedStorage = {},
+		
+		-- Maps from a hookState to a queryChangedStorage
+		_hookStateMappings = {},
 	}, World)
 
 	self.rootArchetype = ensureArchetype(self, {})
@@ -504,6 +507,14 @@ function World:despawn(id)
 	bufferCommand(self, { type = "despawn", entityId = id })
 end
 
+local function cleanupHookMappings(self)
+	for hookState, storage in self._hookStateMappings do
+		hookState.worlds[self] = nil
+	end
+	
+	self._hookStateMappings = {}
+end
+
 --[=[
 	Removes all entities from the world.
 
@@ -520,6 +531,8 @@ function World:clear()
 	self._entityMetatablesCache = {}
 	self._size = 0
 	self._changedStorage = {}
+	
+	cleanupHookMappings(self)
 end
 
 --[=[
@@ -1109,18 +1122,22 @@ function World:query(...)
 end
 
 local function cleanupQueryChanged(hookState)
-	local world = hookState.world
+	local worlds = hookState.worlds
 	local componentToTrack = hookState.componentToTrack
-
-	for index, object in world._changedStorage[componentToTrack] do
-		if object == hookState.storage then
-			table.remove(world._changedStorage[componentToTrack], index)
-			break
+	
+	for world in worlds do
+		for index, object in world._changedStorage[componentToTrack] do
+			if object == hookState.storage then
+				table.remove(world._changedStorage[componentToTrack], index)
+				break
+			end
 		end
-	end
+		
+		world._hookStateMappings[hookState] = nil
 
-	if next(world._changedStorage[componentToTrack]) == nil then
-		world._changedStorage[componentToTrack] = nil
+		if next(world._changedStorage[componentToTrack]) == nil then
+			world._changedStorage[componentToTrack] = nil
+		end
 	end
 end
 
@@ -1196,13 +1213,14 @@ function World:queryChanged(componentToTrack, ...: nil)
 	end
 
 	local hookState = topoRuntime.useHookState(componentToTrack, cleanupQueryChanged)
-
-	if hookState.storage then
+	
+	local storage = self._hookStateMappings[hookState]
+	if storage then
 		return function(): any
-			local entityId, record = next(hookState.storage)
+			local entityId, record = next(storage)
 
 			if entityId then
-				hookState.storage[entityId] = nil
+				storage[entityId] = nil
 
 				return entityId, record
 			end
@@ -1213,12 +1231,16 @@ function World:queryChanged(componentToTrack, ...: nil)
 	if not self._changedStorage[componentToTrack] then
 		self._changedStorage[componentToTrack] = {}
 	end
+	
+	if not hookState.worlds then
+		hookState.worlds = {}
+		hookState.componentToTrack = componentToTrack
+	end
 
 	local storage = {}
-	hookState.storage = storage
-	hookState.world = self
-	hookState.componentToTrack = componentToTrack
-
+	self._hookStateMappings[hookState] = storage
+	hookState.worlds[self] = true
+	
 	table.insert(self._changedStorage[componentToTrack], storage)
 
 	local queryResult = self:query(componentToTrack)
