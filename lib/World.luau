@@ -197,6 +197,9 @@ local function transitionArchetype(
 ): number
 	local oldArchetype = entityRecord.archetype
 	local oldEntityIndex = entityRecord.indexInArchetype
+	if oldArchetype == archetype then
+		return
+	end
 
 	-- Add entity to archetype's entities
 	local entities = archetype.entities
